@@ -75,9 +75,10 @@ main/
 
 ## Screenshots
 
-![Main Screen] (Captura de tela 2026-09-27 173646.png)
+<img width="1937" height="889" alt="Main Screen" src="screen1.png" />
 
-![Plant Select] (Captura de tela 2026-09-27 173520.png)
+<img width="1937" height="889" alt="Select Plant" src="screen2.png" />
+
 
 ## ⚠️ Nota de Segurança e Metodologia
 
