@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catálogo de Venenos Vegetais</title>
+    
+    <!-- CSS do Leaflet para o mapa -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+        }
+
+        body {
+            display: flex;
+            flex-direction: row;
+            height: 100vh;
+            overflow: hidden;
+            background-color: #f4f4f9;
+        }
+
+        /* --- Barra Lateral --- */
+        #sidebar {
+            width: 30%;
+            height: 100%;
+            background: #fff;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+            padding: 20px;
+            overflow-y: auto;
+            transition: all 0.5s ease;
+            z-index: 10;
+        }
+
+        #sidebar h2 {
+            color: #2c5e3b;
+            margin-bottom: 15px;
+            border-bottom: 2px solid #2c5e3b;
+            padding-bottom: 5px;
+        }
+
+        .species-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .species-item:hover {
+            background: #e8f5e9;
+        }
+
+        .species-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .species-scientific {
+            font-style: italic;
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        /* --- Painel de Detalhes --- */
+        #details-pane {
+            width: 0%; /* Inicia escondido */
+            height: 100%;
+            background: #fff;
+            padding: 0;
+            overflow-y: auto;
+            transition: all 0.5s ease;
+            opacity: 0;
+            z-index: 5;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        }
+
+        /* --- Contêiner do Mapa --- */
+        #map-container {
+            width: 70%;
+            height: 100%;
+            transition: all 0.5s ease;
+            position: relative;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* --- ESTADOS QUANDO PLANTA É SELECIONADA --- */
+        
+        /* Oculta a barra lateral */
+        body.plant-selected #sidebar {
+            width: 0%;
+            padding: 0;
+            opacity: 0;
+            overflow: hidden;
+        }
+
+        /* Expande os detalhes para 60% da tela */
+        body.plant-selected #details-pane {
+            width: 60%;
+            padding: 40px;
+            opacity: 1;
+        }
+
+        /* Reduz o mapa para ocupar os outros 40% da tela, lado a lado */
+        body.plant-selected #map-container {
+            width: 40%;
+        }
+
+
+        /* --- CARROSSEL DE FOTOS --- */
+        #carousel-container {
+            position: relative;
+            flex: 0 0 600px;
+            height: 340px;
+            border-radius: 15px;
+            overflow: hidden;
+            background: #e0e0e0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- LAYOUT LADO A LADO --- */
+        .content-split {
+            display: flex;
+            flex-direction: row;
+            gap: 30px;
+            align-items: flex-start;
+        }
+
+        .info-texts {
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .carousel-img {
+            display: none;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            animation: fade 0.6s;
+        }
+
+        .carousel-img.active {
+            display: block;
+        }
+
+        @keyframes fade {
+            from {opacity: 0.4}
+            to {opacity: 1}
+        }
+
+        .carousel-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            cursor: pointer;
+            font-size: 20px;
+            border-radius: 50%;
+            z-index: 10;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.3s;
+        }
+
+        .carousel-btn:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        .btn-prev { left: 15px; }
+        .btn-next { right: 15px; }
+
+        /* --- Textos e Botões --- */
+        .btn-voltar {
+            background: #2c5e3b;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 16px;
+            margin-bottom: 20px;
+        }
+
+        .info-section { margin-bottom: 15px; }
+        .info-section h3 { color: #2c5e3b; margin-bottom: 5px; }
+        
+        /* Contêiner interno para evitar quebra de layout durante a animação */
+        .details-content {
+            min-width: 400px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Lista Lateral -->
+    <div id="sidebar">
+        <h2>Espécies Encontradas</h2>
+        <div id="lista-plantas"></div>
+    </div>
+
+    <!-- Painel de Detalhes da Planta -->
+    <div id="details-pane">
+        <div class="details-content">
+            <button class="btn-voltar" onclick="fecharDetalhes()">← Voltar para a Lista</button>
+            <h1 id="detalhe-nome">Nome da Planta</h1>
+            <h3 id="detalhe-cientifico" style="font-style: italic; color: #666; margin-bottom: 20px;">Nome científico</h3>
+            
+            <!-- Contentor Lado a Lado -->
+            <div class="content-split">
+                
+                <!-- Coluna da Esquerda: Fotos -->
+                <div id="carousel-container" onmouseenter="pausarCarrossel()" onmouseleave="iniciarCarrossel()">
+                    <button class="carousel-btn btn-prev" onclick="mudarSlide(-1)">❮</button>
+                    <div id="carousel-images"></div>
+                    <button class="carousel-btn btn-next" onclick="mudarSlide(1)">❯</button>
+                </div>
+                
+                <!-- Coluna da Direita: Textos -->
+                <div class="info-texts">
+                    <div class="info-section">
+                        <h3>Parte da Planta Tóxica</h3>
+                        <p id="detalhe-parte-toxica"></p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Nível de Toxicidade (1 a 5)</h3>
+                        <p id="detalhe-nivel-toxicidade"></p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Tipo de Toxina / Efeitos Conhecidos</h3>
+                        <p id="detalhe-veneno"></p>
+                    </div>
+
+                    <div class="info-section">
+                        <h3>Características</h3>
+                        <p id="detalhe-caracteristicas"></p>
+                    </div>
+                    
+                    <div class="info-section">
+                        <h3>Referências Consultadas</h3>
+                        <p id="detalhe-referencias"></p>
+                    </div>
+                </div>
+
+            </div>
+            <!-- Fim do Contentor Lado a Lado -->
+        </div>
+    </div>
+
+    <!-- Mapa -->
+    <div id="map-container">
+        <div id="map"></div>
+    </div>
+
+    <!-- JS do Leaflet -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // === 1. BANCO DE DADOS DAS PLANTAS ===
+        const plantas = 
+            [
+    {
+        id: 1,
+        nome: "Avelós",
+        cientifico: "Euphorbia tirucalli",
+        lat: -15.731785, 
+        lng: -47.902664, 
+        fotos: [
+            "20260917_143151.jpg",
+            "20260917_143204.jpg"
+        ],
+        parteToxica: "Látex (seiva leitosa) branco presente nos caules",
+        nivelToxicidade: "5",
+        caracteristicas: "Arbusto sem folhas aparentes, composto por caules verdes cilíndricos, lisos e altamente ramificados",
+        veneno: "Alta toxicidade. A sua perigosidade deve-se à presença de diterpenos e triterpenos no látex branco que a planta liberta ao ser quebrada. Estas substâncias são altamente reativas e destroem a barreira lipídica das membranas celulares animais. Este processo inicia uma inflamação intensa e necrose tecidual, causando queimaduras químicas severas na pele e potenciais lesões permanentes na córnea. A ingestão inflama imediatamente o trato digestivo, gerando dores agudas",
+        referencias: "LORENZI, Harri. Plantas Tóxicas do Brasil. Nova Odessa: Instituto Plantarum, 2000."
+    },
+    {
+        id: 2,
+        nome: "Espada-de-são-jorge",
+        cientifico: "Sansevieria trifasciata",
+        lat: -15.731913,
+        lng: -47.902270,
+        fotos: [
+            "20260917_143610.jpg",
+            "20260917_143606.jpg"
+        ],
+        parteToxica: "Folhas",
+        nivelToxicidade: "2",
+        caracteristicas: "Reconhecível pelas suas folhas longas, rígidas e com padrões variegados de verde.",
+        veneno: "Toxicidade de grau leve a moderado. Possui saponinas, moléculas que atuam quimicamente como um detergente. Se as folhas forem ingeridas, especialmente por cães e gatos, as saponinas ligam-se ao colesterol das membranas celulares da mucosa gástrica e rompem-nas. Isto irrita a parede estomacal, provocando salivação excessiva, vómitos e diarreia",
+        referencias: "ASPCA (American Society for the Prevention of Cruelty to Animals). Toxic and Non-Toxic Plants List: Snake Plant. Disponível em: [https://www.aspca.org/pet-care/animal-poison-control](https://www.aspca.org/pet-care/animal-poison-control)."
+    },
+    {
+        id: 3,
+        nome: "Trapoeraba-Roxa ou Coração-Roxo",
+        cientifico: "Tradescantia pallida",
+        lat: -15.730983,
+        lng: -47.902440,
+        fotos: [
+            "20260917_144125.jpg",
+            "20260917_144126.jpg"
+        ],
+        parteToxica: "Seiva",
+        nivelToxicidade: "1",
+        caracteristicas: "Planta rasteira que se destaca pela sua densa folhagem alongada e arroxeada",
+        veneno: "Toxicidade leve. A seiva contém moléculas que se fixam nas proteínas da pele, desencadeando uma reação alérgica do sistema imunitário. Causa dermatite de contato com vermelhidão e comichão, sendo muito comum em cães que se deitam sobre a planta",
+        referencias: "ASPCA (American Society for the Prevention of Cruelty to Animals). Toxic and Non-Toxic Plants List. / SPINOSA, Helenice S. et al. Toxicologia Veterinária. 4. ed. Rio de Janeiro: Guanabara Koogan, 2008."
+    },
+    {
+        id: 4,
+        nome: "Sangue-de-cristo",
+        cientifico: "Euphorbia cotinifolia",
+        lat: -15.757235,
+        lng: -47.871263,
+        fotos: [
+            "20260918_154046.jpg",
+            "20260918_154050.jpg",
+            "20260918_154058.jpg",
+            "20260918_154054.jpg"
+        ],
+        parteToxica: "Látex (seiva leitosa) presente em todas as partes da planta",
+        nivelToxicidade: "5",
+        caracteristicas: "Arbusto frondoso, possui folhas arredondadas de um tom vinho ou vermelho-púrpura vibrante",
+        veneno: "Alta toxicidade. Pertence à mesma família do avelós e liberta um látex altamente cáustico ao ser ferida. O contato direto destrói as membranas celulares, causando dor imediata, queimaduras químicas severas com bolhas e risco de lesões oculares graves. A ingestão inflama o trato gastrointestinal",
+        referencias: "LORENZI, Harri. Plantas Tóxicas do Brasil. Nova Odessa: Instituto Plantarum, 2000."
+    },
+    {
+        id: 5,
+        nome: "Acálifa ou Folha-de-cobre",
+        cientifico: "Acalypha wilkesiana",
+        lat: -15.757246,
+        lng: -47.871222,
+        fotos: [
+            "20260918_154624.jpg",
+            "20260918_154632.jpg"
+        ],
+        parteToxica: "Seiva e tecido vegetal",
+        nivelToxicidade: "3",
+        caracteristicas: "Arbusto de folhas largas e serrilhadas com padrões irregulares em tons de verde, amarelo, laranja e acobreado",
+        veneno: "Toxicidade moderada. A seiva apresenta compostos ligeiramente cáusticos que, em peles sensíveis, desencadeiam dermatite de contato durante o manuseamento. A mastigação e ingestão do tecido vegetal ativam reações inflamatórias no trato gastrointestinal, levando a quadros de náuseas e vómitos devido à irritação da mucosa gástrica",
+        referencias: "ASPCA (American Society for the Prevention of Cruelty to Animals). Toxic and Non-Toxic Plants List: Copperleaf. Disponível em: [https://www.aspca.org/pet-care/animal-poison-control](https://www.aspca.org/pet-care/animal-poison-control)."
+    },
+    {
+        id: 6,
+        nome: "Taioba-brava",
+        cientifico: "Xanthosoma violaceum",
+        lat: -15.757186,
+        lng: -47.871176,
+        fotos: [
+            "20260918_154829.jpg",
+            "20260918_154838.jpg"
+        ],
+        parteToxica: "Folhas, caules e seiva",
+        nivelToxicidade: "5",
+        caracteristicas: "Planta de grande porte com folhas largas em formato de escudo ou coração, de cor verde intensa",
+        veneno: "Alta toxicidade. Contém cristais de oxalato de cálcio (ráfides). A mastigação rompe as células da planta, disparando estas microagulhas contra a mucosa oral. Isto causa dor excruciante, inchaço severo da língua e da garganta, salivação intensa e risco de asfixia por edema da glote. A seiva também é irritante para a pele e os olhos",
+        referencias: "LORENZI, Harri. Plantas Tóxicas do Brasil. Nova Odessa: Instituto Plantarum, 2000."
+    },
+    {
+        id: 7,
+        nome: "Chapéu-de-napoleão",
+        cientifico: "Thevetia peruviana",
+        lat: -15.760756,
+        lng: -47.868558,
+        fotos: [
+            "20260918_160146.jpg",
+            "20260918_160153.jpg"
+        ],
+        parteToxica: "Todas as partes da planta (seiva, folhas e frutos)",
+        nivelToxicidade: "5",
+        caracteristicas: "Arbusto com folhagem densa de folhas finas e flores alaranjadas em forma de sino",
+        veneno: "Toxicidade muito alta e letal. Possui toxinas cardiotóxicas (glicosídeos cardíacos). Estas substâncias inibem a bomba de sódio-potássio nas membranas do músculo cardíaco, provocando uma acumulação massiva de cálcio intracelular. Este desequilíbrio iónico força o coração a contrair de forma caótica, originando arritmias severas e paragem cardíaca caso seja ingerida",
+        referencias: "LORENZI, Harri. Plantas Tóxicas do Brasil. Nova Odessa: Instituto Plantarum, 2000. / SPINOSA, Helenice S. et al. Toxicologia Veterinária. 4. ed. Rio de Janeiro: Guanabara Koogan, 2008."
+    },
+    {
+        id: 8,
+        nome: "Agave-dragão",
+        cientifico: "Agave attenuata",
+        lat: -15.760654,
+        lng: -47.868315,
+        fotos: [
+            "20260918_160442.jpg",
+            "20260918_160438.jpg"
+        ],
+        parteToxica: "Seiva no interior das folhas",
+        nivelToxicidade: "4",
+        caracteristicas: "Suculenta de tronco grosso que sustenta uma roseta monumental de folhas largas e lisas de cor verde-azulada, sem espinhos nas pontas",
+        veneno: "Alta toxicidade. A sua seiva possui um mecanismo duplo: atua com o efeito detergente das saponinas e o efeito perfurante dos cristais de oxalato de cálcio. O líquido libertado ao partir a folha induz uma dermatite mecânica e química aguda na pele. A ingestão provoca dor imediata e inchaço obstrutivo das vias digestivas superiores",
+        referencias: "ASPCA (American Society for the Prevention of Cruelty to Animals). Toxic and Non-Toxic Plants List. Disponível em: [https://www.aspca.org/pet-care/animal-poison-control](https://www.aspca.org/pet-care/animal-poison-control)."
+    },
+    {
+        id: 9,
+        nome: "Figueira-benjamina ou Ficus-chorão",
+        cientifico: "Ficus benjamina",
+        lat: -15.847469,
+        lng: -47.801266,
+        fotos: [
+            "20260920_155543.jpg",
+            "20260920_155546.jpg",
+            "20260920_155548.jpg"
+        ],
+        parteToxica: "Látex (seiva leitosa) libertado ao cortar folhas e caules",
+        nivelToxicidade: "2",
+        caracteristicas: "Árvore ou arbusto com folhas pequenas, ovais e pontiagudas. Pode apresentar margens irregulares de cor creme na variedade variegada",
+        veneno: "Toxicidade leve a moderada. O látex contém enzimas proteolíticas (como a ficina) e psoralenos. O contato com a pele causa dermatite irritativa (vermelhidão e ardor), que se agrava com a exposição solar. A mastigação irrita fisicamente as mucosas, provocando hipersalivação, vómitos e diarreia, sendo um risco comum para animais de estimação",
+        referencias: "ASPCA (American Society for the Prevention of Cruelty to Animals). Toxic and Non-Toxic Plants List: Fig. / SPINOSA, Helenice S. et al. Toxicologia Veterinária. 4. ed. Rio de Janeiro: Guanabara Koogan, 2008."
+    },
+    {
+        id: 10,
+        nome: "Moisés-no-berço ou Abacaxi-roxo",
+        cientifico: "Tradescantia spathacea",
+        lat: -15.8004939,
+        lng: -48.0702826,
+        fotos: [
+            "20260925_171226.jpg",
+            "20260925_171223.jpg"
+        ],
+        parteToxica: "Seiva presente no interior das folhas",
+        nivelToxicidade: "1",
+        caracteristicas: "Planta rasteira com folhas compridas em forma de lança, apresentando a superfície verde e o verso de um tom roxo ou magenta vibrante",
+        veneno: "Toxicidade leve. A seiva atua como um agente irritante cutâneo. O contato direto durante a manutenção pode desencadear dermatite de contato, resultando em ardor e comichão. Se a planta for mastigada por animais, os compostos irritam a mucosa oral e gastrointestinal, causando salivação e desconforto abdominal transitório",
+        referencias: "ASPCA (American Society for the Prevention of Cruelty to Animals). Toxic and Non-Toxic Plants List. Disponível em: [https://www.aspca.org/pet-care/animal-poison-control](https://www.aspca.org/pet-care/animal-poison-control)."
+    }
+        ];
+
+        // Centraliza o mapa inicial na área das plantas (Brasília)
+        const map = L.map('map').setView([-15.80, -47.93], 12);
+
+        L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+            attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community'
+        }).addTo(map);
+
+        const marcadores = {};
+        const listaDiv = document.getElementById('lista-plantas');
+
+        plantas.forEach(planta => {
+            if(planta.nome !== "") { // Ignora plantas vazias
+                const marker = L.marker([planta.lat, planta.lng]).addTo(map);
+                marker.bindPopup(`<b>${planta.nome}</b><br>Clique para ver detalhes.`);
+                marcadores[planta.id] = marker;
+
+                marker.on('click', () => abrirDetalhes(planta));
+
+                const item = document.createElement('div');
+                item.className = 'species-item';
+                item.innerHTML = `
+                    <div class="species-name">${planta.nome}</div>
+                    <div class="species-scientific">${planta.cientifico}</div>
+                `;
+                
+                item.onclick = () => abrirDetalhes(planta);
+                listaDiv.appendChild(item);
+            }
+        });
+
+        // === LÓGICA DO CARROSSEL DE FOTOS ===
+        let slideAtual = 0;
+        let carrosselIntervalo;
+        let fotosAtuais = [];
+
+        function renderizarCarrossel() {
+            const containerImagens = document.getElementById('carousel-images');
+            containerImagens.innerHTML = ''; 
+            
+            fotosAtuais.forEach((foto, index) => {
+                const img = document.createElement('img');
+                img.src = foto;
+                img.className = 'carousel-img' + (index === 0 ? ' active' : '');
+                containerImagens.appendChild(img);
+            });
+        }
+
+        function mudarSlide(direcao) {
+            slideAtual += direcao;
+            
+            if (slideAtual >= fotosAtuais.length) {
+                slideAtual = 0;
+            } else if (slideAtual < 0) {
+                slideAtual = fotosAtuais.length - 1;
+            }
+            
+            const imgs = document.querySelectorAll('.carousel-img');
+            imgs.forEach(img => img.classList.remove('active'));
+            
+            if(imgs[slideAtual]) {
+                imgs[slideAtual].classList.add('active');
+            }
+        }
+
+        function iniciarCarrossel() {
+            pausarCarrossel();
+            carrosselIntervalo = setInterval(() => {
+                mudarSlide(1);
+            }, 3000); 
+        }
+
+        function pausarCarrossel() {
+            clearInterval(carrosselIntervalo);
+        }
+
+        // === FUNÇÕES DO PAINEL DE DETALHES ===
+        function abrirDetalhes(planta) {
+            // Atualização dos textos com os novos campos
+            document.getElementById('detalhe-nome').innerText = planta.nome;
+            document.getElementById('detalhe-cientifico').innerText = planta.cientifico;
+            
+            document.getElementById('detalhe-parte-toxica').innerText = planta.parteToxica;
+            document.getElementById('detalhe-nivel-toxicidade').innerText = planta.nivelToxicidade;
+            document.getElementById('detalhe-veneno').innerText = planta.veneno;
+            document.getElementById('detalhe-caracteristicas').innerText = planta.caracteristicas;
+            document.getElementById('detalhe-referencias').innerText = planta.referencias;
+
+            fotosAtuais = planta.fotos;
+            slideAtual = 0;
+            renderizarCarrossel();
+            iniciarCarrossel();
+
+            document.body.classList.add('plant-selected');
+
+            // Centraliza o mapa na planta e abre o popup
+            map.setView([planta.lat, planta.lng], 20);
+            marcadores[planta.id].openPopup();
+
+            // Pede pro Leaflet re-calcular o tamanho do mapa após a animação de 500ms
+            setTimeout(() => { map.invalidateSize(); }, 500);
+        }
+
+        function fecharDetalhes() {
+            document.body.classList.remove('plant-selected');
+            pausarCarrossel();
+            
+            // Centraliza o mapa de volta em Brasília
+            map.setView([-15.80, -47.93], 12);
+            map.closePopup();
+
+            // Recalcula o tamanho após voltar
+            setTimeout(() => { map.invalidateSize(); }, 500);
+        }
+    </script>
+</body>
+</html>
