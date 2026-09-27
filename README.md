@@ -40,8 +40,11 @@ A aplicação foi construída em página única (HTML/CSS/JS) e combina mapeamen
 Para o correto funcionamento do catálogo, mantenha os ficheiros organizados na mesma pasta:
 
 catalogo-plantas/
+
 ├── plantas.html           # Aplicação principal (HTML, CSS e JS)
+
 ├── README.txt             # Documentação do projeto
+
 └── *.jpg                  # Registos fotográficos das espécies
 
 ---
